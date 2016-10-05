@@ -12,7 +12,6 @@ import org.opencv.android.BaseLoaderCallback;
 import org.opencv.android.CameraBridgeViewBase.CvCameraViewFrame;
 import org.opencv.android.LoaderCallbackInterface;
 import org.opencv.android.OpenCVLoader;
-import org.opencv.core.Core;
 import org.opencv.core.Mat;
 import org.opencv.core.MatOfPoint;
 import org.opencv.core.MatOfPoint2f;
@@ -26,9 +25,7 @@ import org.opencv.objdetect.CascadeClassifier;
 import org.opencv.imgproc.Imgproc;
 
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.content.Context;
-import android.content.DialogInterface;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.Menu;
@@ -37,7 +34,6 @@ import android.view.MotionEvent;
 import android.view.SubMenu;
 import android.view.View;
 import android.view.View.OnTouchListener;
-import android.widget.SeekBar;
 import android.widget.Toast;
 import android.view.WindowManager;
 
@@ -46,6 +42,7 @@ public class FdActivity extends Activity implements OnTouchListener, CvCameraVie
 	private static final String TAG = "OCVSample::Activity";
 	private Mat mRgba;
 	private Mat mGray;
+	private Point resolutionPoint;
 	private ScanTool mOpenCvCameraView;
 	
 	// 臉部辨識
@@ -61,9 +58,6 @@ public class FdActivity extends Activity implements OnTouchListener, CvCameraVie
 	private boolean faceFUNtmp = false;
 	
 	// 輪廓辨識
-	private MatOfPoint2f approxCurve;
-	private Point resolutionPoint;
-	private List<MatOfPoint> contours = new ArrayList<MatOfPoint>();
 	private MenuItem mItemFindContours;
 	private final int HYSTERESIS_THRESHOLD1 = 128;
 	private final int HYSTERESIS_THRESHOLD2 = 255;
@@ -198,23 +192,25 @@ public class FdActivity extends Activity implements OnTouchListener, CvCameraVie
     public Mat onCameraFrame(CvCameraViewFrame inputFrame) {   	
 		mRgba = inputFrame.rgba();
 		mGray = inputFrame.gray();
-				
-		// 臉部辨識
-		if(faceFUN && mJavaDetector != null){
-			setFaceFUN(mGray, mRgba);
-		}
+		resolutionPoint = new Point(mRgba.width(), mRgba.height());
 		
 		// 輪廓辨識
 		if(findContoursFUN){
 			setFindContoursFUN(mGray, mRgba);
 		}
-		
+				
+		// 臉部辨識
+		if(faceFUN && mJavaDetector != null){
+			setFaceFUN(mGray, mRgba);
+		}
+						
         return mRgba;
     }
     
 	// 臉部辨識
 	private Mat setFaceFUN(Mat mMatOrg, Mat mRgba){
-		mMatOrg.copyTo(mMatOrg);
+		Mat mTmp = new Mat();
+		mMatOrg.copyTo(mTmp);
 		
 		if (mAbsoluteFaceSizeMin == 0) {
 			int height = mRgba.rows();
@@ -230,7 +226,7 @@ public class FdActivity extends Activity implements OnTouchListener, CvCameraVie
 		
 		MatOfRect faces = new MatOfRect();
 		
-		mJavaDetector.detectMultiScale(mMatOrg, faces, 1.1, 6, 2, // TODO: objdetect.CV_HAAR_SCALE_IMAGE
+		mJavaDetector.detectMultiScale(mTmp, faces, 1.1, 6, 2, // TODO: objdetect.CV_HAAR_SCALE_IMAGE
                 new Size(mAbsoluteFaceSizeMin, mAbsoluteFaceSizeMin), new Size(mAbsoluteFaceSizeMax, mAbsoluteFaceSizeMax));
 		
         Rect[] facesArray = faces.toArray();
@@ -243,38 +239,39 @@ public class FdActivity extends Activity implements OnTouchListener, CvCameraVie
 	
 	// 輪廓辨識
 	private Mat setFindContoursFUN(Mat mMatOrg, Mat mRgba){
-		mMatOrg.copyTo(mMatOrg);
+		Mat mTmp = new Mat();
+		mMatOrg.copyTo(mTmp);
 
 		// 二值化
-		Imgproc.threshold(mMatOrg, mMatOrg,
+		Imgproc.threshold(mTmp, mTmp,
 				100, 255, Imgproc.ADAPTIVE_THRESH_GAUSSIAN_C | Imgproc.THRESH_BINARY);
 		
 		// 影像金字塔(縮小)
-		Imgproc.pyrDown(mMatOrg, mMatOrg,
+		Imgproc.pyrDown(mTmp, mTmp,
 				new Size(mRgba.cols()/2, mRgba.rows()/2));	
 		
 		// 蝕刻
-		Imgproc.erode(mMatOrg, mMatOrg,
+		Imgproc.erode(mTmp, mTmp,
 				Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(7, 7)));
 		
 		// 邊緣偵測
-		Imgproc.Canny(mMatOrg, mMatOrg,
+		Imgproc.Canny(mTmp, mTmp,
 				HYSTERESIS_THRESHOLD1, HYSTERESIS_THRESHOLD2, 3, false);
 		
 		// 影像金字塔(放大)
-		Imgproc.pyrUp(mMatOrg, mMatOrg,
-				new Size(mMatOrg.cols()*2, mMatOrg.rows()*2));
+		Imgproc.pyrUp(mTmp, mTmp,
+				new Size(mTmp.cols()*2, mTmp.rows()*2));
 		
 		// 找影像輪廓
-		contours = new ArrayList<MatOfPoint>();
-		Imgproc.findContours(mMatOrg, contours, new Mat(), Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE, new Point(0, 0));
+		ArrayList<MatOfPoint> contours = new ArrayList<MatOfPoint>();
+		Imgproc.findContours(mTmp, contours, new Mat(), Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE, new Point(0, 0));
 
 		if(contours.size() != 0 && contours.size() < 500) {
 			// 劃出輪廓線
 			Imgproc.drawContours(mRgba, contours, -1, new Scalar(255, 255, 0, 255), 1);
 
 			//For each contour found
-			approxCurve = new MatOfPoint2f();
+			MatOfPoint2f approxCurve = new MatOfPoint2f();
 			for (int i=0; i<contours.size(); i++) {
 				//Convert contours(i) from MatOfPoint to MatOfPoint2f
 				MatOfPoint2f contour2f = new MatOfPoint2f( contours.get(i).toArray() );
@@ -290,6 +287,10 @@ public class FdActivity extends Activity implements OnTouchListener, CvCameraVie
 				// Get bounding rect of contour
 				Rect rect = Imgproc.boundingRect(points);
 				
+				// draw enclosing rectangle (all same color, but you could use variable i to make them unique)
+				Imgproc.rectangle(mRgba, new Point(rect.x,rect.y), 
+						new Point(rect.x+rect.width,rect.y+rect.height), new Scalar(0, 255, 0, 255), 2);
+				
 //				// 輪廓取矩形可自動調整大小
 //				RotatedRect rect2 = Imgproc.minAreaRect(contour2f);
 //				Point[] vertices = new Point[4];
@@ -298,15 +299,13 @@ public class FdActivity extends Activity implements OnTouchListener, CvCameraVie
 //					Core.line(mRgba, vertices[j], vertices[(j + 1) % 4], new Scalar(0, 255, 0, 255), 2);					
 //				}
 			
-				// draw enclosing rectangle (all same color, but you could use variable i to make them unique)
-				Imgproc.rectangle(mRgba, new Point(rect.x,rect.y), new Point(rect.x+rect.width,rect.y+rect.height), new Scalar(0, 255, 0, 255), 2);
 			}
 			// 找影像輪廓數量顯示
-//			Imgproc.putText(mRgba, String.valueOf(contours.size()), new Point(10, resolutionPoint.y - 15), 3, 1, new Scalar(255, 0, 0, 255), 2);
+			Imgproc.putText(mRgba, String.valueOf(contours.size()), new Point(10, resolutionPoint.y - 15), 3, 1, new Scalar(255, 0, 0, 255), 2);
  			
 		} else {
 			// 找影像輪廓數量顯示
-//			Imgproc.putText(mRgba, String.valueOf(0), new Point(10, resolutionPoint.y - 15), 3, 1, new Scalar(255, 0, 0, 255), 2);
+			Imgproc.putText(mRgba, String.valueOf(0), new Point(10, resolutionPoint.y - 15), 3, 1, new Scalar(255, 0, 0, 255), 2);
 		}
 		return mRgba;
 	}
