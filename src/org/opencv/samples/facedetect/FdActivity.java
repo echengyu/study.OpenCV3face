@@ -177,7 +177,7 @@ public class FdActivity extends Activity implements OnTouchListener, CvCameraVie
 	}
 
 	public void onCameraViewStarted(int width, int height) {
-//		mRgba = new Mat(height, width, CvType.CV_8UC4);
+		mRgba = new Mat(height, width, CvType.CV_8UC4);
 		mGray = new Mat();
 
 		// 色彩
@@ -213,7 +213,11 @@ public class FdActivity extends Activity implements OnTouchListener, CvCameraVie
 	public Mat onCameraFrame(CvCameraViewFrame inputFrame) {
 		mRgba = inputFrame.rgba();
 		mGray = inputFrame.gray();
-		resolutionPoint = new Point(mRgba.width(), mRgba.height());
+		
+		// 取得解析度
+		if(resolutionPoint == null){
+			resolutionPoint = new Point(mRgba.width(), mRgba.height());
+		}
 
 		// 輪廓辨識
 		if(findContoursFUN) {
